@@ -9,11 +9,18 @@
 #define PIN_RADIUS 8
 
 typedef struct Nand Nand;
+typedef struct Pin Pin;
 
-typedef struct {
+struct Pin {
     Vector2 pos;
     Nand *parent;
-} Pin;
+
+    struct {
+        Pin *items;
+        size_t count;
+        size_t capacity;
+    } targets;
+};
 
 struct Nand {
     Vector2 pos;
@@ -24,10 +31,24 @@ struct Nand {
 
 typedef struct {
     struct {
+        Vector2 *items;
+        size_t count;
+        size_t capacity;
+    } points;
+} Wire;
+
+typedef struct {
+    struct {
         Nand *items;
         size_t count;
         size_t capacity;
     } nands;
+
+    struct {
+        Wire *items;
+        size_t count;
+        size_t capacity;
+    } wires;
 } State;
 
 State state = {0};
@@ -53,6 +74,17 @@ void DrawNand(Nand *nand) {
     DrawRectangleRec(rec, RED);
 }
 
+Pin CreatePin(Vector2 pos, Nand *parent) {
+    Pin pin = {
+        .pos = pos,
+        .parent = parent,
+    };
+
+    da_init(&pin.targets, 1);
+
+    return pin;
+}
+
 Nand *CreateNand(float x, float y) {
     da_append(&state.nands, (Nand){0});
     Nand *nand = &state.nands.items[state.nands.count - 1];
@@ -60,13 +92,10 @@ Nand *CreateNand(float x, float y) {
     nand->pos.x = x;
     nand->pos.y = y;
 
-    nand->inputs[0].pos = (Vector2){0, PIN_RADIUS};
-    nand->inputs[0].parent = nand;
-    nand->inputs[1].pos = (Vector2){0, NAND_HEIGHT - PIN_RADIUS};
-    nand->inputs[1].parent = nand;
+    nand->inputs[0] = CreatePin((Vector2){0, PIN_RADIUS}, nand);
+    nand->inputs[1] = CreatePin((Vector2){0, NAND_HEIGHT - PIN_RADIUS}, nand);
 
-    nand->output.pos = (Vector2){NAND_WIDTH, NAND_HEIGHT / 2};
-    nand->output.parent = nand;
+    nand->output = CreatePin((Vector2){NAND_WIDTH, NAND_HEIGHT / 2}, nand);
 
     return nand;
 }
