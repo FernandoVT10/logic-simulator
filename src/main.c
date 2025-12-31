@@ -12,6 +12,7 @@ typedef struct Nand Nand;
 typedef struct Pin Pin;
 
 struct Pin {
+    bool isInput;
     Vector2 pos;
     Nand *parent;
 
@@ -39,16 +40,18 @@ typedef struct {
     Vector2 wireConnectionPoint;
 } WireConnection;
 
+typedef struct {
+    Vector2 *items;
+    size_t count;
+    size_t capacity;
+} Points;
+
 struct Wire {
     WireConnection src;
     WireConnection target;
 
     // these are points between the src and target
-    struct {
-        Vector2 *items;
-        size_t count;
-        size_t capacity;
-    } points;
+    Points points;
 };
 
 typedef struct {
@@ -63,12 +66,19 @@ typedef struct {
         size_t count;
         size_t capacity;
     } wires;
+
+    bool wiring;
+    struct {
+        Pin *firstPin;
+        Points points;
+    } wireData;
 } State;
 
 State state = {0};
 
-Pin CreatePin(Vector2 pos, Nand *parent) {
+Pin CreatePin(Vector2 pos, Nand *parent, bool isInput) {
     Pin pin = {
+        .isInput = isInput,
         .pos = pos,
         .parent = parent,
     };
@@ -83,10 +93,10 @@ Nand *CreateNand(float x, float y) {
     nand->pos.x = x;
     nand->pos.y = y;
 
-    nand->inputs[0] = CreatePin((Vector2){0, PIN_RADIUS}, nand);
-    nand->inputs[1] = CreatePin((Vector2){0, NAND_HEIGHT - PIN_RADIUS}, nand);
+    nand->inputs[0] = CreatePin((Vector2){0, PIN_RADIUS}, nand, true);
+    nand->inputs[1] = CreatePin((Vector2){0, NAND_HEIGHT - PIN_RADIUS}, nand, true);
 
-    nand->output = CreatePin((Vector2){NAND_WIDTH, NAND_HEIGHT / 2}, nand);
+    nand->output = CreatePin((Vector2){NAND_WIDTH, NAND_HEIGHT / 2}, nand, false);
     return nand;
 }
 
@@ -119,13 +129,64 @@ void DrawWire(Wire wire) {
     DrawLineEx(curPoint, endPoint, 3, BLUE);
 }
 
+
+void HandleWiring(Pin *pin) {
+    if(state.wiring) {
+        if(pin->isInput && state.wireData.firstPin->isInput) return;
+
+        Pin *srcPin, *targetPin;
+
+        if(pin->isInput) {
+            srcPin = state.wireData.firstPin;
+            targetPin = pin;
+        } else {
+            srcPin = pin;
+            targetPin = state.wireData.firstPin;
+        }
+
+        Wire wire = {
+            .src = {
+                .isPin = true,
+                .pin = srcPin,
+            },
+            .target = {
+                .isPin = true,
+                .pin = targetPin,
+            },
+        };
+
+        da_init(&wire.points, state.wireData.points.count);
+
+        for(size_t i = 0; i < state.wireData.points.count; i++) {
+            da_append(&wire.points, state.wireData.points.items[i]);
+        }
+
+        da_append(&state.wires, wire);
+
+        state.wiring = false;
+    } else {
+        state.wiring = true;
+        state.wireData.firstPin = pin;
+        state.wireData.points.count = 0;
+    }
+}
+
+void UpdatePin(Pin *pin) {
+    Vector2 pos = GetPinPos(pin);
+    Vector2 mousePos = GetMousePosition();
+
+    if(CheckCollisionPointCircle(mousePos, pos, PIN_RADIUS) && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+        HandleWiring(pin);
+    }
+}
+
 void DrawPin(Pin pin) {
     assert(pin.parent != NULL);
     Vector2 pos = GetPinPos(&pin);
     DrawCircleV(pos, PIN_RADIUS, GRAY);
 }
 
-void DrawNand(Nand *nand) {
+void UpdateNand(Nand *nand) {
     Rectangle rec = {
         .x = nand->pos.x,
         .y = nand->pos.y,
@@ -133,15 +194,13 @@ void DrawNand(Nand *nand) {
         .height = NAND_HEIGHT,
     };
 
+    UpdatePin(&nand->inputs[0]);
+    UpdatePin(&nand->inputs[1]);
+    UpdatePin(&nand->output);
+
     DrawPin(nand->inputs[0]);
     DrawPin(nand->inputs[1]);
     DrawPin(nand->output);
-
-    Vector2 outPos = GetPinPos(&nand->output);
-    for(size_t i = 0; i < nand->output.targets.count; i++) {
-        Vector2 targetPos = GetPinPos(nand->output.targets.items[i]);
-        DrawLineEx(outPos, targetPos, 3, PINK);
-    }
 
     DrawRectangleRec(rec, RED);
 }
@@ -160,42 +219,8 @@ int main(void) {
 
     Nand *nand_1 = CreateNand(100, 100);
     Nand *nand_2 = CreateNand(300, 100);
-
-    {
-        Wire wire = {
-            .src = {
-                .isPin = true,
-                .pin = &nand_1->output,
-            },
-            .target = {
-                .isPin = true,
-                .pin = &nand_2->inputs[0],
-            },
-        };
-
-        da_init(&wire.points, 1);
-        da_append(&wire.points, ((Vector2){100 + NAND_WIDTH + 40, 100 + NAND_HEIGHT / 2}));
-        da_append(&wire.points, ((Vector2){100 + NAND_WIDTH + 40, 87 + NAND_HEIGHT / 2}));
-
-        da_append(&state.wires, wire);
-    }
-
-    {
-        Wire wire = {
-            .src = {
-                .isPin = false,
-                .wireConnectionPoint = {100 + NAND_WIDTH + 40, 100 + NAND_HEIGHT / 2}
-            },
-            .target = {
-                .isPin = true,
-                .pin = &nand_2->inputs[1],
-            },
-        };
-
-        da_init(&wire.points, 1);
-        da_append(&wire.points, ((Vector2){100 + NAND_WIDTH + 40, 113 + NAND_HEIGHT / 2}));
-        da_append(&state.wires, wire);
-    }
+    (void) nand_1;
+    (void) nand_2;
 
     while(!WindowShouldClose()) {
         BeginDrawing();
@@ -204,6 +229,23 @@ int main(void) {
         for(size_t i = 0; i < state.wires.count; i++) {
             Wire wire = state.wires.items[i];
             DrawWire(wire);
+        }
+
+        if(state.wiring) {
+            Vector2 curPoint = GetPinPos(state.wireData.firstPin);
+
+            for(size_t i = 0; i < state.wireData.points.count; i++) {
+                Vector2 point = state.wireData.points.items[i];
+                DrawLineEx(curPoint, point, 3, BLUE);
+                curPoint = point;
+            }
+
+            Vector2 mousePos = GetMousePosition();
+            DrawLineEx(curPoint, mousePos, 3, BLUE);
+
+            for(size_t i = 0; i < state.wireData.points.count; i++) {
+                DrawCircleV(state.wireData.points.items[i], 5, DARKBLUE);
+            }
         }
 
         // draw wire points
@@ -217,7 +259,14 @@ int main(void) {
 
         for(size_t i = 0; i < state.nands.count; i++) {
             Nand *nand = &state.nands.items[i];
-            DrawNand(nand);
+            UpdateNand(nand);
+        }
+
+        // It's important that this is after the nands are updated
+        // since we need to know if we're clicking above a pin
+        if(state.wiring && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+            Vector2 mousePos = GetMousePosition();
+            da_append(&state.wireData.points, mousePos);
         }
 
         EndDrawing();
