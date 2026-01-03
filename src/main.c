@@ -4,6 +4,9 @@
 
 #include "CCFuncs.h"
 
+#include "simulation.h"
+#include "visual.h"
+
 #define NAND_WIDTH 120
 #define NAND_HEIGHT 40
 #define PIN_RADIUS 8
@@ -139,6 +142,7 @@ void HandleWiring(Pin *pin) {
         if(pin->isInput) {
             srcPin = state.wireData.firstPin;
             targetPin = pin;
+
         } else {
             srcPin = pin;
             targetPin = state.wireData.firstPin;
@@ -157,8 +161,14 @@ void HandleWiring(Pin *pin) {
 
         da_init(&wire.points, state.wireData.points.count);
 
-        for(size_t i = 0; i < state.wireData.points.count; i++) {
-            da_append(&wire.points, state.wireData.points.items[i]);
+        if(state.wireData.firstPin->isInput) {
+            for(int i = state.wireData.points.count - 1; i >= 0; i--) {
+                da_append(&wire.points, state.wireData.points.items[i]);
+            }
+        } else {
+            for(size_t i = 0; i < state.wireData.points.count; i++) {
+                da_append(&wire.points, state.wireData.points.items[i]);
+            }
         }
 
         da_append(&state.wires, wire);
@@ -222,9 +232,27 @@ int main(void) {
     (void) nand_1;
     (void) nand_2;
 
+    SimChip *s_nand_1 = SimNandCreate();
+    SimChip *s_nand_2 = SimNandCreate();
+
+    SimAddPinConnection(SimGetOutputPin(s_nand_1, 0), SimGetInputPin(s_nand_2, 0));
+    SimAddPinConnection(SimGetOutputPin(s_nand_1, 0), SimGetInputPin(s_nand_2, 1));
+
+    SimChip *led = SimLedCreate();
+    SimAddPinConnection(SimGetOutputPin(s_nand_2, 0), SimGetInputPin(led, 0));
+
+    SimSetInputPinState(s_nand_1, 0, SIM_PIN_ON);
+    SimSetInputPinState(s_nand_1, 1, SIM_PIN_ON);
+
+    SimPrintChip(led);
+
+    VisualNandCreate((Vector2){500, 500});
+
     while(!WindowShouldClose()) {
         BeginDrawing();
         ClearBackground(BLACK);
+
+        VisualUpdate();
 
         for(size_t i = 0; i < state.wires.count; i++) {
             Wire wire = state.wires.items[i];
@@ -271,6 +299,8 @@ int main(void) {
 
         EndDrawing();
     }
+
+    SimDestroy();
 
     CloseWindow();
 
