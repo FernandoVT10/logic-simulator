@@ -1,27 +1,10 @@
+#include "raymath.h"
 #include "visual.h"
 #include "CCFuncs.h"
 
 #define VISUAL_PIN_RADIUS 10
 #define VISUAL_CHIP_PADDING 20
 #define VISUAL_CHIP_FONT_SIZE 30
-
-typedef enum {
-    ACTION_NONE,
-    ACTION_DRAGGING,
-} ActionType;
-
-typedef struct {
-    struct {
-        VisualChip *items;
-        size_t count;
-        size_t capacity;
-    } chips;
-
-    struct {
-        ActionType type;
-        uint16_t chipId;
-    } action;
-} VisualState;
 
 static VisualState state = {0};
 
@@ -106,36 +89,71 @@ static bool HandleDragging(VisualChip *chip) {
     return dragging;
 }
 
-static void DrawPinArr(VisualPinArr arr) {
+static void UpdatePin(VisualPin *pin, Vector2 pinPos) {
+    Vector2 mousePos = GetMousePosition();
+    if(state.action.type == ACTION_NONE) {
+        bool collision = CheckCollisionPointCircle(mousePos, pinPos, VISUAL_PIN_RADIUS);
+        if(collision && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+            state.action.type = ACTION_WIRING;
+            state.action.wiring.points.count = 0;
+            state.action.wiring.pin = pin;
+        }
+    }
+}
+
+static void UpdatePinArr(VisualPinArr arr) {
     if(arr.count == 0) return;
 
+    assert(arr.items[0].parentChip != NULL);
+
     Rectangle chipRec = arr.items[0].parentChip->rec;
+    Vector2 parentPos = {chipRec.x, chipRec.y};
 
     for(size_t i = 0; i < arr.count; i++) {
         VisualPin pin = arr.items[i];
-        Vector2 pos = {
-            .x = chipRec.x + pin.pos.x,
-            .y = chipRec.y + pin.pos.y,
-        };
+        Vector2 pos = Vector2Add(pin.pos, parentPos);
+
+        UpdatePin(&arr.items[i], pos);
+
         DrawCircleV(pos, VISUAL_PIN_RADIUS, DARKGRAY);
     }
 }
 
 static void UpdateNand(VisualChip *chip) {
+    // before updating the pins and therefore being able to wire them
+    // we want first to see if we can drag the chip first, this is done
+    // since the chip rectangle overlaps the pins
     bool dragging = HandleDragging(chip);
+
+    UpdatePinArr(chip->inputPins);
+    UpdatePinArr(chip->outputPins);
 
     int pad = VISUAL_CHIP_PADDING;
     int fontSize = VISUAL_CHIP_FONT_SIZE;
-
-    DrawPinArr(chip->inputPins);
-    DrawPinArr(chip->outputPins);
 
     Color color = dragging ? (Color){180, 0, 0, 255} : RED;
     DrawRectangleRec(chip->rec, color);
     DrawText("NAND", chip->rec.x + pad, chip->rec.y + pad, fontSize, WHITE);
 }
 
+static Vector2 GetPinPos(VisualPin *pin) {
+    assert(pin->parentChip != NULL);
+    Rectangle chipRec = pin->parentChip->rec;
+
+    return (Vector2){
+        .x = pin->pos.x + chipRec.x,
+        .y = pin->pos.y + chipRec.y,
+    };
+}
+
 void VisualUpdate(void) {
+    if(state.action.type == ACTION_WIRING) {
+        // TODO: check if pin is not NULL
+        Vector2 startPos = GetPinPos(state.action.wiring.pin);
+        Vector2 mousePos = GetMousePosition();
+        DrawLineEx(startPos, mousePos, 3, BLUE);
+    }
+
     for(size_t i = 0; i < state.chips.count; i++) {
         VisualChip *chip = &state.chips.items[i];
         switch(chip->type) {
@@ -148,6 +166,13 @@ void VisualUpdate(void) {
         if(IsMouseButtonReleased(MOUSE_LEFT_BUTTON)) {
             state.action.type = ACTION_NONE;
             state.action.chipId = 0;
+        }
+    } else if(state.action.type == ACTION_WIRING) {
+        // cancel wiring
+        if(IsMouseButtonPressed(MOUSE_RIGHT_BUTTON)) {
+            state.action.type = ACTION_NONE;
+            state.action.wiring.pin = NULL;
+            state.action.wiring.points.count = 0;
         }
     }
 }

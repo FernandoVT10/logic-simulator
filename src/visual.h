@@ -30,6 +30,37 @@ struct VisualChip {
     VisualPinArr outputPins;
 };
 
+typedef enum {
+    ACTION_NONE,
+    ACTION_DRAGGING,
+    ACTION_WIRING,
+} ActionType;
+
+typedef struct {
+    ActionType type;
+    uint16_t chipId;
+
+    struct {
+        VisualPin *pin; // pin where the wiring started
+
+        struct {
+            Vector2 *items;
+            size_t count;
+            size_t capacity;
+        } points;
+    } wiring;
+} VisualAction;
+
+typedef struct {
+    struct {
+        VisualChip *items;
+        size_t count;
+        size_t capacity;
+    } chips;
+
+    VisualAction action;
+} VisualState;
+
 void VisualNandCreate(Vector2 pos);
 void VisualUpdate(void);
 
