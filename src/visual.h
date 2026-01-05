@@ -4,9 +4,13 @@
 #include "raylib.h"
 #include "simulation.h"
 
+typedef struct VisualChip VisualChip;
+
 typedef struct {
     bool isInput;
     Vector2 pos; // relative to parent chip pos
+
+    VisualChip *parentChip;
 } VisualPin;
 
 typedef struct {
@@ -14,7 +18,8 @@ typedef struct {
     size_t count;
 } VisualPinArr;
 
-typedef struct {
+struct VisualChip {
+    uint16_t id;
     ChipType type;
     SimChip *chip;
 
@@ -23,7 +28,7 @@ typedef struct {
 
     VisualPinArr inputPins;
     VisualPinArr outputPins;
-} VisualChip;
+};
 
 void VisualNandCreate(Vector2 pos);
 void VisualUpdate(void);

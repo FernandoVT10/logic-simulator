@@ -252,6 +252,11 @@ int main(void) {
         BeginDrawing();
         ClearBackground(BLACK);
 
+        if(IsKeyPressed(KEY_N)) {
+            Vector2 mousePos = GetMousePosition();
+            VisualNandCreate(mousePos);
+        }
+
         VisualUpdate();
 
         for(size_t i = 0; i < state.wires.count; i++) {
